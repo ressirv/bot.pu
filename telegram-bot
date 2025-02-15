@@ -1,0 +1,75 @@
+import logging
+import os
+import re
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import ChatPermissions
+from aiogram.utils import executor
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения
+load_dotenv()
+API_TOKEN = os.getenv("BOT_TOKEN", "8045745747:AAG0LDGm60vgqPM4Kl88JixV2iyC0Ay2RCU")  
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "1084656660"))  
+
+# Настройки фильтрации
+FORBIDDEN_WORDS = ["реклама", "подпишись", "скидка", "заработок"]
+DELETE_LINKS = True
+
+# Логирование
+logging.basicConfig(level=logging.INFO)
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
+dp.middleware.setup(LoggingMiddleware())
+
+# Фильтр сообщений
+@dp.message_handler(content_types=types.ContentType.TEXT)
+async def filter_ads(message: types.Message):
+    if message.chat.id != CHANNEL_ID:
+        return  
+
+    # Фильтр запрещенных слов
+    if any(word in message.text.lower() for word in FORBIDDEN_WORDS):
+        await message.delete()
+        await message.answer(f"{message.from_user.first_name}, реклама запрещена!")
+
+    # Фильтр ссылок
+    if DELETE_LINKS and re.search(r'http[s]?://|t\.me/|@', message.text):
+        await message.delete()
+        await message.answer(f"{message.from_user.first_name}, ссылки запрещены!")
+
+# Добавить слово в бан-лист
+@dp.message_handler(commands=['addword'])
+async def add_word(message: types.Message):
+    global FORBIDDEN_WORDS
+    if len(message.text.split()) > 1:
+        new_word = message.text.split()[1].lower()
+        FORBIDDEN_WORDS.append(new_word)
+        await message.answer(f"Слово \"{new_word}\" добавлено в список запрещенных.")
+    else:
+        await message.answer("Используйте: /addword слово")
+
+# Удалить слово из бан-листа
+@dp.message_handler(commands=['removeword'])
+async def remove_word(message: types.Message):
+    global FORBIDDEN_WORDS
+    if len(message.text.split()) > 1:
+        word = message.text.split()[1].lower()
+        if word in FORBIDDEN_WORDS:
+            FORBIDDEN_WORDS.remove(word)
+            await message.answer(f"Слово \"{word}\" удалено из списка запрещенных.")
+        else:
+            await message.answer("Такого слова нет в списке.")
+    else:
+        await message.answer("Используйте: /removeword слово")
+
+# Включение/выключение удаления ссылок
+@dp.message_handler(commands=['togglelinks'])
+async def toggle_links(message: types.Message):
+    global DELETE_LINKS
+    DELETE_LINKS = not DELETE_LINKS
+    status = "включено" if DELETE_LINKS else "выключено"
+    await message.answer(f"Удаление ссылок теперь {status}.")
+
+if __name__ == "__main__":
+    executor.start_polling(dp, skip_updates=True)
